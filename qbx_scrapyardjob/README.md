@@ -1,6 +1,6 @@
 # qbx_scrapyardjob
 
-FiveM Qbox scrapyard resource by **Supernoob Indonesia**. This implementation includes an ACE-protected root administration panel for business status and government auction listing management, alongside the initial business/auction foundation.
+FiveM Qbox scrapyard resource by **Supernoob Indonesia**. The resource includes an ACE-protected root administration panel for business status, employee, and auction listing management, alongside the initial business/auction foundation.
 
 ## Dependencies
 - qbx_core
@@ -27,14 +27,14 @@ Ensure dependencies start before this resource. No QB legacy resources are used.
 7. Add `ensure qbx_scrapyardjob` after dependencies in server.cfg.
 
 ## Root administrator
-Root access is checked on the server for the command and every admin callback using `IsPlayerAceAllowed`. The NUI is only presentation and does not grant authorization. Root admins can review businesses, set a business to active/suspended/expired, create auction listings, and disable available listings. These operations are logged to the server console. Setting a business to expired releases its unique location for reuse; reactivating a business can fail if the location is already occupied.
+Root access is checked on the server for the command and every admin callback using `IsPlayerAceAllowed`. The NUI is only presentation and does not grant authorization. Root admins can review businesses, change business status, manage employee grades/membership, create auction listings, and disable available listings. These operations are logged to the server console. Activating a business can fail if its location is occupied. Removing an employee does not alter the business owner.
 
 ## Configure before use
 - `config.lua`: actual business/pickup/dropoff locations, pricing, rental amounts, police integration, storage adapter, catalog, and scrap item weights.
 - `Config.Illegal` is disabled by default; mission coordinates, vehicle allowlist, dispatch adapter, and server-side vehicle validation must be implemented/configured before enabling.
 - `Config.Storage` is disabled pending a server-specific adapter.
 - The database schema has no automatic seed locations or auction listings.
-- Auction creation in the admin panel currently stores no pickup coordinate. Configure the pickup adapter/location before enabling physical retrieval.
+- Auction creation currently stores no pickup coordinate. Physical pickup, delivery, and salvage are not implemented in this version. Do not sell auction vehicles until that vehicle workflow is completed.
 - Replace example item weights with the values intended for your inventory.
 
 ## Scope and limitations

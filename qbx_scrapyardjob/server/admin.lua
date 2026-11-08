@@ -17,6 +17,9 @@ local function adminSnapshot()
         isRootAdmin = true,
         businesses = MySQL.query.await([[SELECT id, location_id, owner_citizenid, ownership_type, status, purchase_price, rental_price, lease_expires_at, grace_expires_at
             FROM scrapyard_businesses ORDER BY location_id ASC LIMIT 200]]) or {},
+        employees = MySQL.query.await([[SELECT e.business_id, e.citizenid, e.grade, e.hired_at, b.location_id, b.status AS business_status
+            FROM scrapyard_employees e INNER JOIN scrapyard_businesses b ON b.id = e.business_id
+            ORDER BY b.location_id ASC, e.hired_at ASC LIMIT 500]]) or {},
         auctions = MySQL.query.await([[SELECT id, model, vehicle_class, price, status, listed_at, expires_at
             FROM scrapyard_auctions ORDER BY id DESC LIMIT 100]]) or {},
     }
@@ -39,11 +42,47 @@ lib.callback.register('qbx_scrapyardjob:server:adminAction', function(source, pa
             local status = payload.status
             if type(businessId) ~= 'string' or #businessId < 1 or #businessId > 50 then error('Invalid business ID.') end
             if status ~= 'active' and status ~= 'suspended' and status ~= 'expired' then error('Invalid business status.') end
-            local exists = MySQL.single.await('SELECT id FROM scrapyard_businesses WHERE id = ?', { businessId })
-            if not exists then error('Business not found.') end
-            local ok = MySQL.update.await('UPDATE scrapyard_businesses SET status = ? WHERE id = ?', { status, businessId })
-            if not ok or ok < 1 then error('Business status was not changed.') end
+            local business = MySQL.single.await('SELECT id, location_id FROM scrapyard_businesses WHERE id = ?', { businessId })
+            if not business then error('Business not found.') end
+            if status == 'active' then
+                local occupied = MySQL.single.await('SELECT id FROM scrapyard_businesses WHERE location_id = ? AND status IN (?, ?) AND id <> ? LIMIT 1', { business.location_id, 'active', 'suspended', businessId })
+                if occupied then error('Another active or suspended business already owns this location.') end
+            end
+            local changed = MySQL.update.await('UPDATE scrapyard_businesses SET status = ? WHERE id = ?', { status, businessId })
+            if not changed or changed < 1 then error('Business status was not changed.') end
             print(('[qbx_scrapyardjob] root admin %s set business %s status to %s'):format(source, businessId, status))
+        elseif payload.action == 'setEmployee' then
+            local businessId, citizenid = payload.businessId, payload.citizenid
+            local grade = tonumber(payload.grade)
+            if type(businessId) ~= 'string' or #businessId < 1 or #businessId > 50 then error('Invalid business ID.') end
+            if type(citizenid) ~= 'string' or #citizenid < 1 or #citizenid > 50 then error('Invalid citizen ID.') end
+            if not grade or grade % 1 ~= 0 or not Config.Employees.grades[grade] then error('Employee grade must be 0, 1, or 2.') end
+            local business = MySQL.single.await('SELECT id, owner_citizenid, status FROM scrapyard_businesses WHERE id = ?', { businessId })
+            if not business or (business.status ~= 'active' and business.status ~= 'suspended') then error('Business is unavailable for employee management.') end
+            if citizenid == business.owner_citizenid then error('The business owner cannot be assigned as an employee.') end
+            local employee = MySQL.single.await('SELECT id FROM scrapyard_employees WHERE business_id = ? AND citizenid = ?', { businessId, citizenid })
+            if employee then
+                local changed = MySQL.update.await('UPDATE scrapyard_employees SET grade = ? WHERE business_id = ? AND citizenid = ?', { grade, businessId, citizenid })
+                if changed == nil then error('Employee grade update failed.') end
+            else
+                local count = tonumber(MySQL.scalar.await('SELECT COUNT(*) FROM scrapyard_employees WHERE business_id = ?', { businessId }) or 0)
+                if count >= Config.Employees.maxPerBusiness then error('Employee limit reached.') end
+                local inserted = MySQL.insert.await('INSERT INTO scrapyard_employees (business_id, citizenid, grade, hired_at) VALUES (?, ?, ?, ?)', { businessId, citizenid, grade, os.time() })
+                if not inserted then error('Employee could not be added.') end
+            end
+            print(('[qbx_scrapyardjob] root admin %s set employee %s grade %d for business %s'):format(source, citizenid, grade, businessId))
+        elseif payload.action == 'removeEmployee' then
+            local businessId, citizenid = payload.businessId, payload.citizenid
+            if type(businessId) ~= 'string' or #businessId < 1 or #businessId > 50 then error('Invalid business ID.') end
+            if type(citizenid) ~= 'string' or #citizenid < 1 or #citizenid > 50 then error('Invalid citizen ID.') end
+            local business = MySQL.single.await('SELECT id, owner_citizenid FROM scrapyard_businesses WHERE id = ?', { businessId })
+            if not business then error('Business not found.') end
+            if citizenid == business.owner_citizenid then error('The business owner cannot be removed as an employee.') end
+            local employee = MySQL.single.await('SELECT id FROM scrapyard_employees WHERE business_id = ? AND citizenid = ?', { businessId, citizenid })
+            if not employee then error('Employee not found.') end
+            local changed = MySQL.update.await('DELETE FROM scrapyard_employees WHERE business_id = ? AND citizenid = ?', { businessId, citizenid })
+            if not changed or changed < 1 then error('Employee could not be removed.') end
+            print(('[qbx_scrapyardjob] root admin %s removed employee %s from business %s'):format(source, citizenid, businessId))
         elseif payload.action == 'createAuction' then
             local model = payload.model
             local class = tonumber(payload.vehicleClass)
