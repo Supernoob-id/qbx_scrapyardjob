@@ -9,6 +9,11 @@ local function locationConfigured(locationId)
     return false
 end
 
+local function openUi(data)
+    SetNuiFocus(true, true)
+    SendNUIMessage({ action = 'open', data = data })
+end
+
 CreateThread(function()
     for _, location in ipairs(Config.Locations) do
         if location.enabled and location.coords then
@@ -25,8 +30,16 @@ RegisterNetEvent('qbx_scrapyardjob:client:open', function(locationId)
     if not locationConfigured(locationId) then notify(Locales.en.unavailable, 'error'); return end
     local data = lib.callback.await('qbx_scrapyardjob:server:dashboard', false, locationId)
     if not data then notify(Locales.en.unavailable, 'error'); return end
-    SetNuiFocus(true, true)
-    SendNUIMessage({ action = 'open', data = data })
+    openUi(data)
+end)
+
+RegisterNetEvent('qbx_scrapyardjob:client:openAdmin', function()
+    local result = lib.callback.await('qbx_scrapyardjob:server:adminDashboard', false)
+    if not result or not result.ok then
+        notify(result and result.error or Locales.en.request_failed, 'error')
+        return
+    end
+    openUi({ isAdminPanel = true, admin = result.data })
 end)
 
 RegisterNetEvent('qbx_scrapyardjob:client:notify', function(message, kind) notify(message, kind) end)

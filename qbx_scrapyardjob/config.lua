@@ -3,6 +3,13 @@ Config.Locale = 'en'
 Config.Debug = false
 Config.Notify = { position = 'top-right', duration = 5000 }
 
+-- Root access is granted exclusively by the server's ACE permission system.
+-- Example server.cfg: add_ace group.admin scrapyard.root allow
+Config.Admin = {
+    acePermission = 'scrapyard.root',
+    command = 'scrapyardadmin',
+}
+
 Config.Security = {
     maxDistance = 8.0,
     requestCooldownMs = 1200,

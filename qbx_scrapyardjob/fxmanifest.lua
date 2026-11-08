@@ -22,6 +22,7 @@ client_scripts {
 
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
+    'server/admin.lua',
     'server/main.lua',
     'server/business.lua',
     'server/illegal.lua',
