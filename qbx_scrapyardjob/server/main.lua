@@ -14,7 +14,8 @@ local function getBusinessForLocation(locationId)
     return MySQL.single.await('SELECT * FROM scrapyard_businesses WHERE location_id = ? AND status IN (?, ?) LIMIT 1', { locationId, 'active', 'suspended' })
 end
 
-local function roleFor(business, cid)
+local function roleFor(business, cid, source)
+    if source and ScrapyardIsRootAdmin(source) then return { grade = 3, owner = true, rootAdmin = true } end
     if not business or not cid then return nil end
     if business.owner_citizenid == cid then return { grade = 3, owner = true } end
     local row = MySQL.single.await('SELECT grade FROM scrapyard_employees WHERE business_id = ? AND citizenid = ?', { business.id, cid })
@@ -23,7 +24,7 @@ end
 
 local function allowed(role, permission)
     if not role then return false end
-    if role.owner then return true end
+    if role.owner or role.rootAdmin then return true end
     local grade = Config.Employees.grades[role.grade]
     return grade and grade.permissions[permission] == true or false
 end
@@ -38,7 +39,7 @@ local function dashboard(src, locationId)
     if type(locationId) ~= 'string' or #locationId > 50 then return nil end
     local business = getBusinessForLocation(locationId)
     local cid = citizenId(src)
-    local role = roleFor(business, cid)
+    local role = roleFor(business, cid, src)
     if not business or not role then return { location = locationId, owned = false, role = nil, auctions = {} } end
     local auctions = MySQL.query.await('SELECT id, model, vehicle_class, price, expires_at FROM scrapyard_auctions WHERE status = ? AND expires_at > ? ORDER BY listed_at DESC LIMIT 50', { 'available', now() }) or {}
     local vehicles = MySQL.query.await('SELECT id, model, vehicle_class, plate, status, purchase_price FROM scrapyard_vehicles WHERE business_id = ? ORDER BY id DESC LIMIT 50', { business.id }) or {}
@@ -60,7 +61,7 @@ lib.callback.register('qbx_scrapyardjob:server:buyAuction', function(src, payloa
     if not auctionId or auctionId < 1 or type(locationId) ~= 'string' then return { ok = false, error = 'Invalid auction selection.' } end
     local business = getBusinessForLocation(locationId)
     local cid = citizenId(src)
-    local role = roleFor(business, cid)
+    local role = roleFor(business, cid, src)
     if not business or business.status ~= 'active' or not allowed(role, 'purchaseVehicle') then return { ok = false, error = Locales.en.not_authorized } end
     local key = 'auction:' .. tostring(auctionId)
     if GlobalState[key] then return { ok = false, error = 'Auction purchase is processing.' } end
@@ -79,7 +80,7 @@ lib.callback.register('qbx_scrapyardjob:server:buyAuction', function(src, payloa
         local inserted = MySQL.transaction.await({
             { query = 'UPDATE scrapyard_auctions SET status = ? WHERE id = ? AND status = ?', values = { 'sold', auctionId, 'available' } },
             { query = 'INSERT INTO scrapyard_vehicles (business_id, auction_id, purchased_by, model, vehicle_class, plate, purchase_price, status, pickup_location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', values = { business.id, auctionId, cid, auction.model, auction.vehicle_class, plate, amount, 'awaiting_pickup', auction.pickup_location } },
-            { query = 'INSERT INTO scrapyard_transactions (business_id, transaction_id, title, amount, transaction_type, issuer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', values = { business.id, transactionId, 'Government auction vehicle', amount, 'withdraw', cid, now() } },
+            { query = 'INSERT INTO scrapyard_transactions (business_id, transaction_id, title, amount, transaction_type, issuer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', values = { business.id, transactionId, 'Government auction vehicle', amount, 'withdraw', cid or 'root-admin', now() } },
         })
         if not inserted then
             pcall(function() exports['Renewed-Banking']:addAccountMoney(business.bank_account_id, amount) end)

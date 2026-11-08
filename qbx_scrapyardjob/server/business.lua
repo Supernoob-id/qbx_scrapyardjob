@@ -32,7 +32,6 @@ lib.callback.register('qbx_scrapyardjob:server:acquireBusiness', function(src, d
     local ok, err = pcall(function()
         local count = MySQL.scalar.await('SELECT COUNT(*) FROM scrapyard_businesses WHERE owner_citizenid = ? AND status IN (?, ?)', { cid, 'active', 'suspended' }) or 0
         if tonumber(count) >= Config.Business.maxPerPlayer then error('Business limit reached.') end
-        if getmetatable(_G) then end
         local active = MySQL.single.await('SELECT id FROM scrapyard_businesses WHERE location_id = ? AND status IN (?, ?) LIMIT 1', { data.location, 'active', 'suspended' })
         if active then error('Location is already owned.') end
         local accountOk = createBankAccount(account, loc.label)
@@ -51,7 +50,8 @@ lib.callback.register('qbx_scrapyardjob:server:employees', function(src, payload
     local player = exports.qbx_core:GetPlayer(src)
     local cid = player and player.PlayerData and player.PlayerData.citizenid
     if not business or not cid then return { ok = false, error = 'Business or player unavailable.' } end
-    local role = business.owner_citizenid == cid and { owner = true } or nil
+    local rootAdmin = ScrapyardIsRootAdmin(src)
+    local role = rootAdmin and { owner = true, rootAdmin = true } or (business.owner_citizenid == cid and { owner = true } or nil)
     if not role then
         local emp = MySQL.single.await('SELECT grade FROM scrapyard_employees WHERE business_id = ? AND citizenid = ?', { business.id, cid })
         if emp and tonumber(emp.grade) == 2 then role = { owner = false } end
