@@ -1,0 +1,1 @@
+Installation guide and configuration checklist are in README.md in this resource directory. Import database.sql, configure actual locations and server adapters, then ensure the resource after its dependencies. Features requiring unverified server-specific integrations remain disabled by default; runtime testing has not been performed.
